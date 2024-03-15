@@ -236,6 +236,7 @@ impl<DB: Database> Floating<DB, Live<DB>> {
         // Immediately close the connection.
         if self.guard.pool.is_closed() {
             self.close().await;
+	    println!("failed return guard closed");
             return false;
         }
 
@@ -245,6 +246,7 @@ impl<DB: Database> Floating<DB, Live<DB>> {
                 Ok(true) => (),
                 Ok(false) => {
                     self.close().await;
+		    println!("failed reutnr test fail");
                     return false;
                 }
                 Err(error) => {
@@ -252,6 +254,7 @@ impl<DB: Database> Floating<DB, Live<DB>> {
                     // Connection is broken, don't try to gracefully close as
                     // something weird might happen.
                     self.close_hard().await;
+		    println!("failed return test error");
                     return false;
                 }
             }
@@ -272,6 +275,7 @@ impl<DB: Database> Floating<DB, Live<DB>> {
 
             // Connection is broken, don't try to gracefully close.
             self.close_hard().await;
+	    println!("failed return, ping error");
             false
         } else {
             // if the connection is still viable, release it to the pool
