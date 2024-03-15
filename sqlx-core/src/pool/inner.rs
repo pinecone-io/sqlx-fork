@@ -616,7 +616,6 @@ impl<DB: Database> DecrementSizeGuard<DB> {
 impl<DB: Database> Drop for DecrementSizeGuard<DB> {
     fn drop(&mut self) {
         if !self.cancelled {
-	    println!("dropping ");
             self.pool.size.fetch_sub(1, Ordering::AcqRel);
 
             // and here we release the permit we got on construction
