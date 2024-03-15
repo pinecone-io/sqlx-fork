@@ -281,7 +281,11 @@ impl<DB: Database> PoolInner<DB> {
                     };
 
                     // Attempt to connect...
-                    return self.connect(deadline, guard).await;
+		    let inner = self.clone();
+                    let conn = crate::rt::spawn(async move {
+			inner.connect(deadline, guard).await
+		    }).await?;
+		    return Ok(conn);
                 }
             }
         )

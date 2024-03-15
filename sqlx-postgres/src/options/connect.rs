@@ -17,7 +17,6 @@ impl ConnectOptions for PgConnectOptions {
     where
         Self::Connection: Sized,
     {
-	println!("connecting");
         Box::pin(PgConnection::establish(self))
     }
 
