@@ -5,13 +5,13 @@ use rand::{thread_rng, Rng};
 #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
 async fn repro_issue() {
     let mut pool_options = PgPoolOptions::new()
-        .max_connections(40)
-        .acquire_timeout(Duration::from_secs(1))
-	.before_acquire(move |_conn, metadata| {
+        .max_connections(20)
+        .acquire_timeout(Duration::from_secs(1));
+	/*.before_acquire(move |_conn, metadata| {
             Box::pin(async move {
 		Ok(thread_rng().gen_range(1..10) != 1)
 	    })
-	});
+	});*/
     /*.after_connect(move |conn, _meta| {
 	    Box::pin(async move {
 		tokio::time::sleep(Duration::from_millis(500)).await;
