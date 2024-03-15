@@ -241,56 +241,67 @@ impl<DB: Database> PoolInner<DB> {
             return Err(Error::PoolClosed);
         }
 
+	// IKTODO: this should jitter
         let deadline = Instant::now() + self.options.acquire_timeout;
 
-        crate::rt::timeout(
-            self.options.acquire_timeout,
-            async {
-                loop {
-                    // Handles the close-event internally
-                    let permit = self.acquire_permit().await?;
+        loop {
+	    if deadline < Instant::now() {
+		return Err(Error::PoolClosed);
+	    }
+		
+            // Handles the close-event internally
+            let permit = match crate::rt::timeout(
+		self.options.acquire_timeout,
+		self.acquire_permit()).await {
+		Ok(Ok(permit)) => permit,
 
+                Ok(Err(e)) => return Err(e),
 
-                    // First attempt to pop a connection from the idle queue.
-                    let guard = match self.pop_idle(permit) {
+                // timed out
+                Err(_) => return Err(Error::PoolTimedOut),
+	    };
+		
+            // First attempt to pop a connection from the idle queue.
+            let guard = match self.pop_idle(permit) {
+                // Then, check that we can use it...
+                Ok(conn) => {
+		    match crate::rt::timeout(
+			self.options.acquire_timeout,
+			check_idle_conn(conn, &self.options)).await {
+			
+                        // All good!
+                        Ok(Ok(live)) => return Ok(live),
+			
+                        // if the connection isn't usable for one reason or another,
+                        // we get the `DecrementSizeGuard` back to open a new one
+                        Ok(Err(guard)) => guard,
 
-                        // Then, check that we can use it...
-                        Ok(conn) => match check_idle_conn(conn, &self.options).await {
-
-                            // All good!
-                            Ok(live) => return Ok(live),
-
-                            // if the connection isn't usable for one reason or another,
-                            // we get the `DecrementSizeGuard` back to open a new one
-                            Err(guard) => guard,
-                        },
-                        Err(permit) => if let Ok(guard) = self.try_increment_size(permit) {
-                            // we can open a new connection
-                            guard
-                        } else {
-                            // This can happen for a child pool that's at its connection limit,
-                            // or if the pool was closed between `acquire_permit()` and
-                            // `try_increment_size()`.
-                            tracing::debug!("woke but was unable to acquire idle connection or open new one; retrying");
-                            // If so, we're likely in the current-thread runtime if it's Tokio
-                            // and so we should yield to let any spawned release_to_pool() tasks
-                            // execute.
-                            crate::rt::yield_now().await;
-                            continue;
-                        }
-                    };
-
-                    // Attempt to connect...
-		    let inner = self.clone();
-                    let conn = crate::rt::spawn(async move {
-			inner.connect(deadline, guard).await
-		    }).await?;
-		    return Ok(conn);
+			Err(_) => return Err(Error::PoolTimedOut),
+		    }
+                },
+                Err(permit) => if let Ok(guard) = self.try_increment_size(permit) {
+                    // we can open a new connection
+                    guard
+                } else {
+                    // This can happen for a child pool that's at its connection limit,
+                    // or if the pool was closed between `acquire_permit()` and
+                    // `try_increment_size()`.
+                    tracing::debug!("woke but was unable to acquire idle connection or open new one; retrying");
+                    // If so, we're likely in the current-thread runtime if it's Tokio
+                    // and so we should yield to let any spawned release_to_pool() tasks
+                    // execute.
+                    crate::rt::yield_now().await;
+                    continue;
                 }
-            }
-        )
-            .await
-            .map_err(|_| Error::PoolTimedOut)?
+            };
+
+	    let connect_deadline = Instant::now() + self.options.acquire_timeout;
+
+            // Attempt to connect...
+	    let conn = self.connect(connect_deadline, guard).await?;
+
+	    return Ok(conn);
+	}
     }
 
     pub(super) async fn connect(
@@ -441,7 +452,6 @@ async fn check_idle_conn<DB: Database>(
     // If the connection we pulled has expired, close the connection and
     // immediately create a new connection
     if is_beyond_max_lifetime(&conn, options) {
-	println!("IKDEBUG max lifetime");
         return Err(conn.close().await);
     }
 
@@ -453,7 +463,6 @@ async fn check_idle_conn<DB: Database>(
             // the error itself here isn't necessarily unexpected so WARN is too strong
             tracing::info!(%error, "ping on idle connection returned error");
             // connection is broken so don't try to close nicely
-	    println!("IKDEBUG ping fail");
             return Err(conn.close_hard().await);
         }
     }
@@ -463,14 +472,12 @@ async fn check_idle_conn<DB: Database>(
         match test(&mut conn.live.raw, meta).await {
             Ok(false) => {
                 // connection was rejected by user-defined hook, close nicely
-		println!("IKDEBUG before_acquire fail");
                 return Err(conn.close().await);
             }
 
             Err(error) => {
                 tracing::warn!(%error, "error from `before_acquire`");
                 // connection is broken so don't try to close nicely
-		println!("IKDEBUG before_acquire error");
                 return Err(conn.close_hard().await);
             }
 
