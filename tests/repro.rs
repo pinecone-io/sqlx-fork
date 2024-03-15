@@ -24,7 +24,7 @@ async fn repro_issue() {
 	let pool = pool.clone();
 	tokio::spawn(async move {
 	    loop {
-		let res = sqlx::query("SELECT pg_sleep(10)")
+		let res = sqlx::query("SELECT pg_sleep(0.25)")
 		    .fetch_all(&pool)
 		    .await;
 		println!("{} max {} size {} idle {}",
