@@ -441,6 +441,7 @@ async fn check_idle_conn<DB: Database>(
     // If the connection we pulled has expired, close the connection and
     // immediately create a new connection
     if is_beyond_max_lifetime(&conn, options) {
+	println!("IKDEBUG max lifetime");
         return Err(conn.close().await);
     }
 
@@ -452,6 +453,7 @@ async fn check_idle_conn<DB: Database>(
             // the error itself here isn't necessarily unexpected so WARN is too strong
             tracing::info!(%error, "ping on idle connection returned error");
             // connection is broken so don't try to close nicely
+	    println!("IKDEBUG ping fail");
             return Err(conn.close_hard().await);
         }
     }
@@ -461,12 +463,14 @@ async fn check_idle_conn<DB: Database>(
         match test(&mut conn.live.raw, meta).await {
             Ok(false) => {
                 // connection was rejected by user-defined hook, close nicely
+		println!("IKDEBUG before_acquire fail");
                 return Err(conn.close().await);
             }
 
             Err(error) => {
                 tracing::warn!(%error, "error from `before_acquire`");
                 // connection is broken so don't try to close nicely
+		println!("IKDEBUG before_acquire error");
                 return Err(conn.close_hard().await);
             }
 
