@@ -281,7 +281,7 @@ impl<C: DerefMut<Target = PgConnection>> PgCopyIn<C> {
                     Some(Cow::Borrowed("57014")) => {
                         // postgres abort received error code
                         conn.stream
-                            .recv_expect(MessageFormat::ReadyForQuery)
+                            .recv_expect::<()>(MessageFormat::ReadyForQuery)
                             .await?;
                         Ok(())
                     }
@@ -315,7 +315,7 @@ impl<C: DerefMut<Target = PgConnection>> PgCopyIn<C> {
         };
 
         conn.stream
-            .recv_expect(MessageFormat::ReadyForQuery)
+            .recv_expect::<()>(MessageFormat::ReadyForQuery)
             .await?;
 
         Ok(cc.rows_affected())
@@ -351,8 +351,8 @@ async fn pg_begin_copy_out<'c, C: DerefMut<Target = PgConnection> + Send + 'c>(
                 MessageFormat::CopyData => r#yield!(msg.decode::<CopyData<Bytes>>()?.0),
                 MessageFormat::CopyDone => {
                     let _ = msg.decode::<CopyDone>()?;
-                    conn.stream.recv_expect(MessageFormat::CommandComplete).await?;
-                    conn.stream.recv_expect(MessageFormat::ReadyForQuery).await?;
+                    conn.stream.recv_expect::<()>(MessageFormat::CommandComplete).await?;
+                    conn.stream.recv_expect::<()>(MessageFormat::ReadyForQuery).await?;
                     return Ok(())
                 },
                 _ => return Err(err_protocol!("unexpected message format during copy out: {:?}", msg.format))

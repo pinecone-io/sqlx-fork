@@ -65,7 +65,7 @@ async fn prepare(
     // indicates that the SQL query string is now successfully parsed and has semantic validity
     let _ = conn
         .stream
-        .recv_expect(MessageFormat::ParseComplete)
+        .recv_expect::<()>(MessageFormat::ParseComplete)
         .await?;
 
     let metadata = if let Some(metadata) = metadata {
